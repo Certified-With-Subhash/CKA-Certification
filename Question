@@ -1,0 +1,134 @@
+Q2: Weightage: 11%
+Task:
+Create a new deployment called myproject with the image nginx:1.16 and 1 replica. Next, upgrade the deployment to version 1.17 using a rolling update. Ensure the version upgrade is recorded in the resource annotation.
+
+Answer:
+
+Create the deployment and save it as a backup:
+
+kubectl create deployment myproject --image=nginx:1.16 --replicas=1 --dry-run=client -o yaml > myproject.yaml
+kubectl create deployment myproject --image=nginx:1.16 --replicas=1
+Upgrade the image version:
+
+kubectl set image deployment/myproject nginx=nginx:1.17 --record
+
+Task:
+Create a pod called test-pod in the "custom" namespace, with labels env=test and tier=backend, using the image nginx:1.17.
+kubectl run test-pod --image=nginx:1.17 --labels env=test,tier=backend --namespace=custom 
+
+
+Task: Use JSON PATH query to retrieve the oslmages of all the nodes and store it in a file "all-nodes-os-info.txt" at root location.
+
+Note: The osImage are under the nodeInfo section under status of each node.
+
+Answer:
+
+using the documentation at https://kubernetes.io/docs/reference/kubectl/quick-reference/
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.osImage}' > all-nodes-os-info.txt
+
+************************************************************
+
+Q14: Weightage: 7%
+Task:
+Create a new user ajeet and grant them access to the cluster. User ajeet should have permissions to create, list, get, update, and delete pods. The private key is located at /root/ajeet/.key, and the CSR is at /root/ajeet.csr.
+
+Answer:
+Step 0: Generate Certificate (if not provided in the exam)
+Visit the Kubernetes documentation on Certificate Signing Requests.
+
+Generate a private key and CSR:
+
+openssl genrsa -out myuser.key 2048
+openssl req -new -key myuser.key -out myuser.csr -subj "/CN=myuser"
+cat myuser.csr | base64 | tr -d "\n"
+Create a CertificateSigningRequest resource:
+
+cat <<EOF | kubectl apply -f -
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: myuser
+spec:
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K...   # Base64 encoded CSR
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # 1 day
+  usages:
+  - client auth
+EOF
+Check the CSR:
+
+kubectl get csr
+Approve the CSR:
+
+kubectl certificate approve myuser
+Retrieve the signed certificate:
+
+kubectl get csr myuser -o jsonpath='{.status.certificate}' | base64 -d > myuser.crt
+Step 1: Create Role and RoleBinding
+Create a role named developer with the required permissions:
+
+kubectl create role developer \
+  --verb=create --verb=get --verb=list --verb=update --verb=delete \
+  --resource=pods
+Bind the role to the user:
+
+kubectl create rolebinding developer-binding-myuser \
+  --role=developer --user=myuser
+Step 2: Update kubeconfig
+Add the user to the kubeconfig:
+
+kubectl config set-credentials myuser \
+  --client-key=myuser.key \
+  --client-certificate=myuser.crt \
+  --embed-certs=true
+Set a context for the user:
+
+kubectl config set-context myuser \
+  --cluster=kubernetes \
+  --user=myuser
+Use the newly created context:
+
+kubectl config use-context myuser
+
+
+******************************************************
+
+Task:
+Create an NGINX pod called dns-resolver using the nginx image. Expose it internally with a service called dns-resolver-service. Verify that the pod and service names are resolvable from within the cluster using the busybox:1.28 image. Save the DNS lookup results in /root/nginx.svc.
+
+Answer:
+Create the NGINX pod:
+
+kubectl run dns-resolver --image=nginx --restart=Never
+Expose the pod with a service:
+
+kubectl expose pod dns-resolver --type=ClusterIP --name=dns-resolver-service --port=80
+Verify the pod and service resolution using the busybox:1.28 image:
+
+kubectl run dns-check --rm -it --image=busybox:1.28 -- /bin/sh -c "nslookup dns-resolver-service"
+Save the results to /root/nginx.svc:
+
+kubectl run dns-check --rm -it --image=busybox:1.28 -- /bin/sh -c "nslookup dns-resolver-service > /root/nginx.svc"
+
+
+****************************
+
+Create a pod output-pod which write “Congratulations! You have passed CKA Exam” into a file “output-pod.txt"
+
+•The Pod output-pod should be deleted automatically after writing the text to the file.
+
+Answer:
+Steps to Implement
+write a run pod command:
+
+kubectl run output-pod --image=busybox -it --rm --restart=Never -- /bin/sh -c 'echo Congratulations! You have passed CKA Exam' > output-pod.txt
+*****************
+
+Find the schedulable nodes in the cluster and save the name and count in to the below file
+
+File path : /root/nodes.txt
+
+Answer:
+from the documentation cheat sheet
+
+kubectl get nodes -o='custom-columns=NodeName:.metadata.name,TaintKey:.spec.taints[*].key,TaintValue:.spec.taints[*].value,TaintEffect:.spec.taints[*].effect'
